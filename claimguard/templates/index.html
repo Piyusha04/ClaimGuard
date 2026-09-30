@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ClaimGuard – claim review desk</title>
+<style>
+:root{--bg:#eef1f3;--panel:#fff;--ink:#17262e;--mute:#5d6f78;--line:#d5dde1;--low:#2f7d6d;--med:#c58a12;--high:#b3261e;--accent:#1f4e5f}
+@media(prefers-color-scheme:dark){:root{--bg:#10191e;--panel:#182329;--ink:#e6eef1;--mute:#93a5ad;--line:#2b3a42;--low:#4fb39d;--med:#e0aa3e;--high:#f0665e;--accent:#7cc0d4}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "IBM Plex Sans","Segoe UI",system-ui,sans-serif}
+header{padding:22px 32px 6px}h1{margin:0;font:600 26px/1.2 Georgia,"Times New Roman",serif}
+header p{margin:4px 0 0;color:var(--mute);max-width:70ch}
+main{padding:16px 32px 40px;display:grid;gap:16px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px}
+.kpi b{display:block;font-size:26px;font-weight:600}.kpi span{color:var(--mute);font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+h2{margin:0 0 10px;font-size:15px;font-weight:600}
+.bar{display:grid;grid-template-columns:96px 1fr 48px;gap:8px;align-items:center;font-size:13px;margin:5px 0}
+.track{background:var(--bg);height:12px;border-radius:2px;overflow:hidden;display:flex}
+.track i{display:block;height:100%}
+.trend{display:flex;align-items:flex-end;gap:6px;height:150px}
+.col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;font-size:11px;color:var(--mute);text-align:center}
+.col div{display:flex;flex-direction:column-reverse;min-height:0}
+.tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+button{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:6px 12px;border-radius:4px;cursor:pointer}
+button:focus-visible,tr:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.on{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.wrap{overflow-x:auto;max-height:420px;overflow-y:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{position:sticky;top:0;background:var(--panel);color:var(--mute);font-weight:500}
+tbody tr{cursor:pointer}tbody tr:hover,tr.sel{background:var(--bg)}
+.pill{padding:2px 8px;border-radius:10px;font-size:12px;color:#fff}
+.pill.low{background:var(--low)}.pill.medium{background:var(--med)}.pill.high{background:var(--high)}
+.split{display:grid;grid-template-columns:2fr 1fr;gap:16px}@media(max-width:900px){.split{grid-template-columns:1fr}main,header{padding-left:16px;padding-right:16px}}
+.why li{margin:8px 0;list-style:none}.why .w{height:6px;background:var(--high);border-radius:3px;margin-top:3px}
+.acts{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}.muted{color:var(--mute)}
+</style></head><body>
+<header><h1>ClaimGuard</h1><p>Every warranty and return claim gets a risk score and the reasons behind it. Low-risk claims can be approved automatically; high-risk claims wait here for an investigator.</p></header>
+<main>
+<section class="kpis" id="kpis"></section>
+<section class="grid">
+ <div class="panel"><h2>Claims by month and risk</h2><div class="trend" id="trend"></div></div>
+ <div class="panel"><h2>High-risk share by product</h2><div id="product"></div></div>
+ <div class="panel"><h2>High-risk share by region</h2><div id="region"></div></div>
+</section>
+<section class="split">
+ <div class="panel"><h2>Review queue</h2>
+  <div class="tabs" id="tabs"></div>
+  <div class="wrap"><table><thead><tr><th>Claim</th><th>Product</th><th>Region</th><th>Amount</th><th>Date</th><th>Risk</th><th>Status</th></tr></thead><tbody id="rows"></tbody></table></div></div>
+ <div class="panel" id="detail"><h2>Claim details</h2><p class="muted">Select a claim in the queue to see why it was flagged.</p></div>
+</section>
+</main>
+<script>
+const $=id=>document.getElementById(id),C={low:'var(--low)',medium:'var(--med)',high:'var(--high)'};
+const money=v=>'$'+Math.round(v).toLocaleString(),j=u=>fetch(u).then(r=>r.json());
+let tier='high',cur=null;
+async function summary(){
+ const s=await j('/api/summary');
+ $('kpis').innerHTML=[[s.total.toLocaleString(),'claims scored'],[s.tiers.high,'high risk, need review'],[s.tiers.medium,'medium risk'],
+  [money(s.at_risk),'paid out if high-risk claims were approved'],[Math.round(s.auto_approve*100)+'%','can be auto-approved']]
+  .map(k=>`<div class="panel kpi"><b>${k[0]}</b><span>${k[1]}</span></div>`).join('');
+ const mx=Math.max(...s.trend.map(t=>t.low+t.medium+t.high));
+ $('trend').innerHTML=s.trend.map(t=>`<div class="col" title="${t.month}: ${t.high} high, ${t.medium} medium, ${t.low} low"><div style="height:${(t.low+t.medium+t.high)/mx*120}px">${['low','medium','high'].map(k=>`<i style="flex:${t[k]};background:${C[k]}"></i>`).join('')}</div>${t.month.slice(5)}</div>`).join('');
+ const bars=(id,d)=>{const m=Math.max(...d.map(x=>x.rate));$(id).innerHTML=d.sort((a,b)=>b.rate-a.rate).map(x=>`<div class="bar"><span>${x.name}</span><div class="track"><i style="width:${x.rate/m*100}%;background:var(--high)"></i></div><span>${(x.rate*100).toFixed(1)}%</span></div>`).join('')};
+ bars('product',s.product);bars('region',s.region);
+}
+function tabs(){$('tabs').innerHTML=['high','medium','low','all'].map(t=>`<button class="${t==tier?'on':''}" data-t="${t}">${t[0].toUpperCase()+t.slice(1)}</button>`).join('');
+ $('tabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{tier=b.dataset.t;tabs();queue()})}
+async function queue(){
+ const d=await j('/api/claims?tier='+tier);
+ $('rows').innerHTML=d.map(c=>`<tr tabindex="0" data-id="${c.claim_id}" class="${cur==c.claim_id?'sel':''}"><td>${c.claim_id}</td><td>${c.product}</td><td>${c.region}</td><td>${money(c.amount)}</td><td>${c.date}</td><td><span class="pill ${c.tier}">${c.risk.toFixed(2)}</span></td><td>${c.decision||'pending'}</td></tr>`).join('')||'<tr><td colspan=7 class="muted">No claims in this tier.</td></tr>';
+ $('rows').querySelectorAll('tr[data-id]').forEach(r=>{r.onclick=()=>open(r.dataset.id);r.onkeydown=e=>{if(e.key=='Enter')open(r.dataset.id)}});
+}
+async function open(id){
+ cur=id;const c=await j('/api/claims/'+id);const mx=Math.max(...c.reasons.map(r=>r.impact),.01);
+ $('detail').innerHTML=`<h2>${c.claim_id} <span class="pill ${c.tier}">${c.tier} · ${c.risk.toFixed(2)}</span></h2>
+ <p class="muted">${c.product}, ${c.type.toLowerCase()} claim for ${money(c.amount)} · ${c.region} · filed ${c.date}<br>Customer ${c.customer} · reason given: ${c.reason}</p>
+ <h2>Why it was flagged</h2><ul class="why" style="padding:0;margin:0">${c.reasons.map(r=>`<li>${r.text}<div class="w" style="width:${r.impact/mx*100}%"></div></li>`).join('')||'<li class="muted">No single factor stands out.</li>'}</ul>
+ <div class="acts">${[['approved','Approve'],['rejected','Reject'],['escalated','Escalate']].map(a=>`<button data-d="${a[0]}">${a[1]}</button>`).join('')}</div><p class="muted" id="msg">${c.decision?'Current decision: '+c.decision:''}</p>`;
+ $('detail').querySelectorAll('[data-d]').forEach(b=>b.onclick=async()=>{
+  await fetch(`/api/claims/${id}/decision`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({decision:b.dataset.d})});
+  $('msg').textContent='Saved: '+b.dataset.d;queue()});
+ queue();
+}
+summary();tabs();queue();
+</script></body></html>
